@@ -51,7 +51,7 @@ const recommendArticles = async (articleURL, sections) => {
     }
 
     data = [...new Map(data.map(v => [v.slug, v])).values()]
-  
+    console.log(data);
     for (let i = 0; i < data.length; i++) {
         const target = nlp.readDoc(data[i].content).tokens().out(its.value, as.bow);
         data[i].score = similarity.bow.cosine(origin, target);
@@ -62,10 +62,62 @@ const recommendArticles = async (articleURL, sections) => {
     return data.slice(0, 5);
 }
 
+const recommendArticles2 = async (articleURL, sections) => {
+    const query = await axios.get(`${articleURL}.json`);
+    const article = query.data.article;
+    article.content = cleanText(article.content);
+    let data = [];
+    const origin = nlp.readDoc(article.content).tokens().out(its.value, as.bow)
+    for (let i = 0; i < sections.length; i++) {
+        const articles = await querySection(sections[i], 1, 20);
+        for (const item of articles) {
+            if (item.slug == article.slug) {
+                continue;
+            }
+            data.push(item);
+        }
+    }
+
+    data = [...new Map(data.map(v => [v.slug, v])).values()]
+
+    const target = [];
+    for (let i = 0; i < data.length; i++) {
+        target.push( {
+            key: data[i].slug,
+            // value: data[i].content
+        });
+    }
+    console.log(target)
+    require('dotenv').config();
+    const { Configuration, OpenAIApi } = require("openai");
+    const configuration = new Configuration({
+        apiKey: process.env.OPENAI_API_KEY,
+    });
+    const openai = new OpenAIApi(configuration);
+
+    const response = await openai.createCompletion({
+        model: "code-davinci-002",
+        prompt: "if the user already read" + articleURL + "reccomend an article from this " +
+            "list: " + target,
+        temperature: 0,
+        max_tokens: 60,
+        top_p: 1.0,
+        frequency_penalty: 0.5,
+        presence_penalty: 0.0,
+        stop: ["You:"],
+    });
+    console.log(response.data.choices[0].text)
+    return response.data.choices[0].text;
+
+}
+
+
+
 // Perform recommendation (this can take a while)
-recommendArticles('/article/2022/11/penn-director-of-admissions-departure-hamilton-college', SECTIONS).then( res => {
+recommendArticles2('/article/2022/11/penn-director-of-admissions-departure-hamilton-college', SECTIONS).then( res => {
     for(let i = 0; i < res.length; i++) {
        console.log(res[i].slug)
        console.log(res[i].score)
     }
 })
+
